@@ -1,3 +1,49 @@
-# 广东塑料袋凹版印刷安卓求职工程
+# 广东塑料袋凹版印刷 · 个人找工作安卓软件
 
-Android app and Guangdong gravure jobs scraper.
+专为**广东省塑料袋/软包装凹版印刷**（机长、一助/副手、二助、学徒）打造的自用安卓求职工具。采用**零服务器成本**架构：GitHub Actions 每天定时低频抓取行业垂直网页并清洗成标准 JSON，原生安卓 App 直接拉取筛选；同时内置**一键粘贴 / 系统分享导入**，承接 BOSS 直聘、58 同城、印刷微信群里刷到的岗位。
+
+## 核心精度特性
+
+1. **严格广东地域锁定**：内置广东 21 地市及核心软包装产业镇映射（自动将“庵埠/潮安/彩塘”归入潮州庵埠，“峡山/潮南/澄海”归入汕头，“长安/厚街/虎门/塘厦”归入东莞，“顺德/南海”归入佛山等），自动过滤外省帖子。
+2. **塑料袋凹印精准识别与去噪**：只保留凹版印刷/塑料软包装/彩印袋相关企业招聘，自动剔除“个人求职帖”以及无关的非凹印帖子。
+3. **关键字段自动抽取**：
+   - **岗位级别**：机长/师傅、一助/副手、二助/助手、学徒、调墨/管理
+   - **月薪数值化**：统一解析 `12000-15000`、`1.3~1.5万`、`12-20K`、`保底+计件`，支持按最低月薪精准筛选
+   - **工作时间与排班**：识别 `长白班`、`两班倒/白夜班`、`26天/28天制`、`月休几天`
+   - **机型与工艺**：识别 `电子轴`、`机械轴`、`北人/欧诺/华丰/方邦/博斯特`、`8~12色机`、`PE/OPP/BOPP/复合袋/背心袋/表印/里印`
+   - **福利与电话**：提取 `包吃住`、`五险/社保`、`年终奖`、`11位手机号`（App 内一键拨号）
+4. **“高频招人”避坑预警**：按联系电话统计近 90 天内重复发帖次数，同一号码短期反复招人会在卡片上自动标黄提醒。
+
+## 目录结构
+
+```text
+gd_gravure_jobs_android/
+├── .github/workflows/daily_scrape.yml  # 每天定时自动抓取并更新 data/jobs.json
+├── scraper/
+│   ├── job_parser.py                       # 广东塑料袋凹印高精度解析引擎
+│   ├── scraper.py                      # 低频抓取脚本（支持多源扩展与历史归档去重）
+│   ├── test_parser.py                  # 解析器单元测试
+│   └── requirements.txt
+├── data/
+│   └── jobs.json                       # 清洗后的标准岗位数据（App 读取源）
+└── android-app/                        # 原生 Android (Kotlin + Jetpack Compose) 工程
+```
+
+## 快速上手（3 步跑起来）
+
+### 第 1 步：部署免费每日自动更新（GitHub Actions）
+1. 在 GitHub 新建一个私有或公开仓库，将本压缩包内全部文件上传到仓库根目录。
+2. 打开仓库 `Actions` 页面，启用 `Daily Guangdong Gravure Jobs Scraper` 工作流（默认每天北京时间 07:30 和 17:30 自动运行，也可点 `Run workflow` 立即测试）。
+3. 复制仓库中 `data/jobs.json` 的 Raw 链接（格式：`https://raw.githubusercontent.com/<你的用户名>/<仓库名>/main/data/jobs.json`）。
+
+### 第 2 步：配置数据源并打包安卓 APK
+1. 用 **Android Studio（Jellyfish / Koala 及以上版本）** 打开 `android-app/` 目录。
+2. 打开 `android-app/app/src/main/java/com/gdgravure/jobs/data/JobRepository.kt`，将 `DEFAULT_FEED_URL` 替换为你自己的 `jobs.json` Raw 链接（也可在 App 内右上角设置里随时修改，无需重装）。
+3. 连接安卓手机（开启 USB 调试）直接点击 Run 安装，或点击 `Build -> Build Bundle(s) / APK(s) -> Build APK(s)` 生成 APK 拷贝到手机安装。
+
+### 第 3 步：配合大平台和微信群使用
+- 在 BOSS 直聘、58 同城、微信群里看到广东塑料袋凹印招聘，直接**复制文字**打开本 App 点右下角 **“+ 导入”**，或者点系统**“分享”→ 选择“粤印求职”**，App 会在本地自动解析出城市、薪资、机型、班次、电话并存入列表。
+
+## 合规与自用说明
+- 抓取脚本默认内置请求间隔（2~3 秒/页）且仅抓取公开网页列表前 3 页，请仅用于个人求职检索，勿高频并发抓取或对外分发。
+- 行业参考数据源示例：[天下软包装](http://www.txrbz.com/info/11068.html)、[广东公共求职招聘服务平台](https://ggfw.hrss.gd.gov.cn/recruitment/internet/main/)、[中国印刷人才网](https://apps.apple.com/cn/app/%E4%B8%AD%E5%9B%BD%E5%8D%B0%E5%88%B7%E4%BA%BA%E6%89%8D%E7%BD%91%E5%AE%98%E6%96%B9%E7%89%88/id965480724)。
