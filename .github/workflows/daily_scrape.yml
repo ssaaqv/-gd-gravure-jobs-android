@@ -1,14 +1,14 @@
-name: Daily Guangdong Gravure Jobs Scraper
+name: 24x7 Guangdong Gravure Multi-Source Scraper
 
 on:
   schedule:
-    # 每天北京时间 07:30 和 17:30 自动运行 (UTC 23:30 和 09:30)
-    - cron: '30 23 * * *'
-    - cron: '30 9 * * *'
+    # 每6小时自动跑一次（北京时间 00:30 / 06:30 / 12:30 / 18:30，晚上睡觉也在跑）
+    - cron: '30 16,22,4,10 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+  models: read
 
 jobs:
   scrape:
@@ -22,13 +22,26 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install -r scraper/requirements.txt
+      - name: Install Python dependencies & Playwright Chromium
+        run: |
+          pip install -r scraper/requirements.txt
+          playwright install chromium
 
       - name: Run parser unit tests
         run: python -m unittest scraper/test_parser.py -v
 
-      - name: Run daily Guangdong gravure scraper
+      - name: Run 6-source Guangdong gravure scraper
+        env:
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASS: ${{ secrets.IMAP_PASS }}
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          BARK_URL: ${{ secrets.BARK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_API_BASE: ${{ secrets.AI_API_BASE }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
         run: python scraper/scraper.py --output data/jobs.json --max-pages 3
 
       - name: Commit updated jobs.json
@@ -36,5 +49,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/jobs.json
-          git diff --staged --quiet || git commit -m "chore: update Guangdong gravure jobs $(date +'%Y-%m-%d')"
+          git diff --staged --quiet || git commit -m "chore: 24x7 update Guangdong gravure jobs $(date +'%Y-%m-%d %H:%M')"
           git push

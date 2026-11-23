@@ -2,6 +2,7 @@ import unittest
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ai_digest import generate_daily_digest
 from job_parser import parse_job_record
 
 
@@ -84,6 +85,18 @@ class TestGuangdongGravureParser(unittest.TestCase):
             location_hint="广东东莞",
         )
         self.assertIsNone(post)
+
+
+    def test_ai_digest_local_fallback(self):
+        post = parse_job_record(
+            title="急招电子轴凹版印刷机长2名",
+            body="潮安庵埠大型软包装厂，10色陕西北人高速电子轴机，月薪1.5-1.8万，包吃住交五险，联系陈生13800138000",
+            location_hint="广东潮州",
+            published_at="2026-11-23",
+        )
+        digest = generate_daily_digest([post.to_dict()])
+        self.assertIn("潮州(庵埠)", digest["summary"])
+        self.assertIn("15000-18000元", digest["summary"])
 
 
 if __name__ == "__main__":

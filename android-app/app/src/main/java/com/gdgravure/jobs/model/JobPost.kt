@@ -7,6 +7,18 @@ enum class FollowStatus(val label: String) {
     BLOCKED("避坑屏蔽")
 }
 
+data class AiDigest(
+    val generatedAt: String = "",
+    val mode: String = "",
+    val summary: String = ""
+)
+
+data class FeedPayload(
+    val updatedAt: String,
+    val aiDigest: AiDigest,
+    val jobs: List<JobPost>
+)
+
 data class JobPost(
     val id: String,
     val title: String,

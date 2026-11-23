@@ -28,8 +28,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             GdGravureTheme {
                 val scope = rememberCoroutineScope()
-                var remoteJobs by remember { mutableStateOf(repo.loadCachedRemoteJobs().second) }
-                var updatedAt by remember { mutableStateOf(repo.loadCachedRemoteJobs().first) }
+                val initialFeed = remember { repo.loadCachedRemoteJobs() }
+                var remoteJobs by remember { mutableStateOf(initialFeed.jobs) }
+                var updatedAt by remember { mutableStateOf(initialFeed.updatedAt) }
+                var aiDigest by remember { mutableStateOf(initialFeed.aiDigest) }
                 var manualJobs by remember { mutableStateOf(repo.getManualJobs()) }
                 var statusMap by remember { mutableStateOf(repo.getStatusMap()) }
                 var isLoading by remember { mutableStateOf(false) }
@@ -52,6 +54,7 @@ class MainActivity : ComponentActivity() {
                 JobListScreen(
                     jobs = allJobs,
                     updatedAt = updatedAt,
+                    aiDigest = aiDigest,
                     isLoading = isLoading,
                     errorMsg = errorMsg,
                     statusMap = statusMap,
@@ -60,9 +63,10 @@ class MainActivity : ComponentActivity() {
                             isLoading = true
                             errorMsg = null
                             repo.fetchRemoteJobs()
-                                .onSuccess { (time, list) ->
-                                    updatedAt = time
-                                    remoteJobs = list
+                                .onSuccess { feed ->
+                                    updatedAt = feed.updatedAt
+                                    aiDigest = feed.aiDigest
+                                    remoteJobs = feed.jobs
                                 }
                                 .onFailure { err ->
                                     errorMsg = err.message ?: "刷新失败"

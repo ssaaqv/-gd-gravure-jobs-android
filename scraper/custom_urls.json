@@ -1,0 +1,11 @@
+{
+  "description": "可随时在此添加更多广东地方人才网或塑料包装厂招聘页，每6小时自动抓取并按广东凹印规则过滤",
+  "sites": [
+    {
+      "name": "潮南人才网",
+      "list_url": "https://www.cnqrc.com/index/company/job/id/2470.html",
+      "location_hint": "广东汕头",
+      "enabled": true
+    }
+  ]
+}

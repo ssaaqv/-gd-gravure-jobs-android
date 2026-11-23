@@ -1,6 +1,8 @@
 package com.gdgravure.jobs.data
 
 import android.content.Context
+import com.gdgravure.jobs.model.AiDigest
+import com.gdgravure.jobs.model.FeedPayload
 import com.gdgravure.jobs.model.FollowStatus
 import com.gdgravure.jobs.model.JobPost
 import kotlinx.coroutines.Dispatchers
@@ -62,15 +64,15 @@ class JobRepository(context: Context) {
         prefs.edit().putString(KEY_MANUAL_JOBS, arr.toString()).apply()
     }
 
-    fun loadCachedRemoteJobs(): Pair<String, List<JobPost>> {
+    fun loadCachedRemoteJobs(): FeedPayload {
         val cached = prefs.getString(KEY_CACHED_REMOTE, null)
         if (cached.isNullOrBlank()) {
-            return "未同步（点击右上角刷新）" to emptyList()
+            return FeedPayload("未同步（点击右上角刷新）", AiDigest(), emptyList())
         }
         return parseFeedJson(cached)
     }
 
-    suspend fun fetchRemoteJobs(): Result<Pair<String, List<JobPost>>> = withContext(Dispatchers.IO) {
+    suspend fun fetchRemoteJobs(): Result<FeedPayload> = withContext(Dispatchers.IO) {
         val urlStr = getFeedUrl()
         if (urlStr.contains("YOUR_USERNAME")) {
             return@withContext Result.failure(
@@ -92,11 +94,21 @@ class JobRepository(context: Context) {
         }
     }
 
-    private fun parseFeedJson(raw: String): Pair<String, List<JobPost>> {
+    private fun parseFeedJson(raw: String): FeedPayload {
         val root = JSONObject(raw)
         val updatedAt = root.optString("updated_at", "未知时间")
+        val digestObj = root.optJSONObject("ai_digest")
+        val digest = if (digestObj != null) {
+            AiDigest(
+                generatedAt = digestObj.optString("generated_at", ""),
+                mode = digestObj.optString("mode", "AI精选"),
+                summary = digestObj.optString("summary", "")
+            )
+        } else {
+            AiDigest()
+        }
         val arr = root.optJSONArray("jobs") ?: JSONArray()
-        return updatedAt to parseJobsArray(arr, isManual = false)
+        return FeedPayload(updatedAt, digest, parseJobsArray(arr, isManual = false))
     }
 
     private fun parseJobsArray(arr: JSONArray, isManual: Boolean): List<JobPost> {

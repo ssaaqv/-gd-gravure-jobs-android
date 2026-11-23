@@ -52,7 +52,7 @@ GRAVURE_STRONG_KEYWORDS = [
 GRAVURE_MEDIUM_KEYWORDS = [
     "印刷机长", "印刷师傅", "印刷副手", "印刷一助", "印刷二助", "印刷助手", "印刷学徒",
     "北人", "陕西北人", "欧诺", "华丰", "方邦", "博斯特", "松德", "中山松德",
-    "PE", "OPP", "BOPP", "PET", "CPP", "PVC", "NY", "尼龙", "筒膜", "桶料", "套印", "调墨",
+    "PE", "OPP", "BOPP", "PET", "CPP", "PVC", "NY", "尼龙", "筒膜", "桶料", "套印", "调墨", "复合机长", "制袋机长", "吹膜", "分切",
 ]
 # 明确排除的噪音词（个人求职帖 或 纯其他无关印刷类型）
 SEEKER_EXCLUDE_KEYWORDS = ["求职", "本人找工作", "找印刷工作", "求职印刷", "求职凹印", "想找一份"]
@@ -144,7 +144,7 @@ def calculate_relevance(title: str, body: str) -> Tuple[int, bool]:
     if any(k in title for k in ("凹印", "凹版", "印刷机长", "印刷师傅", "印刷副手", "印刷学徒")):
         score += 30
 
-    return min(score, 100), score >= 25
+    return min(score, 100), score >= 20
 
 
 def detect_role(text: str) -> str:
