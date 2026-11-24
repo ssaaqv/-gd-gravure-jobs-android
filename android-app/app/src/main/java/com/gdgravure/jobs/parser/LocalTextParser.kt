@@ -4,6 +4,7 @@ import com.gdgravure.jobs.model.AiDigest
 import com.gdgravure.jobs.model.JobPost
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -76,7 +77,7 @@ object LocalTextParser {
             city = city,
             sourceName = sourceName,
             sourceUrl = sourceUrl,
-            publishedAt = publishedAt.ifBlank { todayStr() },
+            publishedAt = publishedAt.ifBlank { extractPublishDate(combined) },
             isManual = false
         )
     }
@@ -256,6 +257,40 @@ object LocalTextParser {
             if (v in 2500..60000) return Triple("约${v}元", v, v)
         }
         return Triple("面议", 0, 0)
+    }
+
+    fun extractPublishDate(text: String): String {
+        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
+        Regex("(202[4-7])[/-](\\d{1,2})[/-](\\d{1,2})").find(text)?.let {
+            val y = it.groupValues[1]
+            val m = it.groupValues[2].padStart(2, '0')
+            val d = it.groupValues[3].padStart(2, '0')
+            return "$y-$m-$d"
+        }
+        val cal = Calendar.getInstance()
+        if (text.contains("今天") || text.contains("今日") || text.contains("刚刚") || text.contains("小时前")) {
+            return fmt.format(cal.time)
+        }
+        if (text.contains("昨天") || text.contains("昨日")) {
+            cal.add(Calendar.DAY_OF_YEAR, -1)
+            return fmt.format(cal.time)
+        }
+        if (text.contains("前天")) {
+            cal.add(Calendar.DAY_OF_YEAR, -2)
+            return fmt.format(cal.time)
+        }
+        Regex("(\\d{1,2})\\s*天前").find(text)?.let {
+            val days = it.groupValues[1].toIntOrNull()?.coerceIn(1, 60) ?: 1
+            cal.add(Calendar.DAY_OF_YEAR, -days)
+            return fmt.format(cal.time)
+        }
+        Regex("(?<!\\d)(0?[1-9]|1[0-2])-([0-2]?[0-9]|3[01])(?!\\d)").find(text)?.let {
+            val y = cal.get(Calendar.YEAR)
+            val m = it.groupValues[1].padStart(2, '0')
+            val d = it.groupValues[2].padStart(2, '0')
+            return "$y-$m-$d"
+        }
+        return fmt.format(cal.time)
     }
 
     private fun todayStr(): String = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date())

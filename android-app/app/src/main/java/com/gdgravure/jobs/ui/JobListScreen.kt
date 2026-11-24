@@ -26,7 +26,8 @@ import com.gdgravure.jobs.model.AiDigest
 import com.gdgravure.jobs.model.FollowStatus
 import com.gdgravure.jobs.model.JobPost
 
-private val CITY_FILTERS = listOf("全部广东", "潮州(庵埠)", "汕头", "东莞", "佛山", "广州", "深圳", "中山", "惠州", "江门", "揭阳")
+private val CITY_FILTERS = listOf("全部广东", "广佛莞(佛/广/莞)", "佛山", "广州", "东莞", "潮州(庵埠)", "汕头", "深圳", "中山", "惠州", "江门", "揭阳")
+private val DATE_FILTERS = listOf(0 to "全部日期", 3 to "近3天", 7 to "近7天", 30 to "近30天")
 private val ROLE_FILTERS = listOf("全部岗位", "机长/师傅", "副手/助手", "学徒", "调墨/管理")
 private val SHIFT_FILTERS = listOf("不限班次", "长白班", "两班倒")
 private val MIN_SALARY_FILTERS = listOf(0 to "不限薪资", 8000 to "≥8K", 10000 to "≥10K", 12000 to "≥12K", 15000 to "≥15K")
@@ -48,6 +49,7 @@ fun JobListScreen(
     var currentTab by remember { mutableIntStateOf(0) } // 0: 找工作, 1: 跟进记录, 2: 行情统计
     var keyword by remember { mutableStateOf("") }
     var selectedCity by remember { mutableStateOf("全部广东") }
+    var maxDaysAgo by remember { mutableIntStateOf(0) }
     var selectedRole by remember { mutableStateOf("全部岗位") }
     var selectedShift by remember { mutableStateOf("不限班次") }
     var minSalary by remember { mutableIntStateOf(0) }
@@ -57,11 +59,21 @@ fun JobListScreen(
     var showRoleMenu by remember { mutableStateOf(false) }
     var showExtraMenu by remember { mutableStateOf(false) }
 
-    val filteredJobs = remember(jobs, keyword, selectedCity, selectedRole, selectedShift, minSalary, sortBySalary, statusMap) {
+    val filteredJobs = remember(jobs, keyword, selectedCity, selectedRole, selectedShift, minSalary, maxDaysAgo, sortBySalary, statusMap) {
         val list = jobs.filter { job ->
             val st = statusMap[job.id] ?: FollowStatus.UNREAD
             if (st == FollowStatus.BLOCKED) return@filter false
-            if (selectedCity != "全部广东" && job.city != selectedCity) return@filter false
+            if (selectedCity == "广佛莞(佛/广/莞)") {
+                if (job.city !in listOf("佛山", "广州", "东莞")) return@filter false
+            } else if (selectedCity != "全部广东" && job.city != selectedCity) {
+                return@filter false
+            }
+            if (maxDaysAgo > 0 && job.publishedAt.length >= 10) {
+                val cutoff = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA).format(
+                    java.util.Date(System.currentTimeMillis() - maxDaysAgo * 86400_000L)
+                )
+                if (job.publishedAt < cutoff) return@filter false
+            }
             if (selectedRole != "全部岗位" && job.role != selectedRole) return@filter false
             if (selectedShift != "不限班次" && job.shift != selectedShift) return@filter false
             if (minSalary > 0 && job.salaryMax < minSalary) return@filter false
@@ -72,7 +84,7 @@ fun JobListScreen(
             }
             true
         }
-        if (sortBySalary) list.sortedByDescending { it.salaryMax } else list
+        if (sortBySalary) list.sortedByDescending { it.salaryMax } else list.sortedByDescending { it.publishedAt }
     }
 
     val trackedJobs = remember(jobs, statusMap) {
@@ -296,6 +308,13 @@ fun JobListScreen(
                                         DropdownMenuItem(
                                             text = { Text("班次：$sh", color = if (sh == selectedShift) BrandBlue else TextPrimary) },
                                             onClick = { selectedShift = sh; showExtraMenu = false }
+                                        )
+                                    }
+                                    HorizontalDivider()
+                                    DATE_FILTERS.forEach { (days, lbl) ->
+                                        DropdownMenuItem(
+                                            text = { Text("发布时间：$lbl", color = if (days == maxDaysAgo) BrandBlue else TextPrimary) },
+                                            onClick = { maxDaysAgo = days; showExtraMenu = false }
                                         )
                                     }
                                     HorizontalDivider()
