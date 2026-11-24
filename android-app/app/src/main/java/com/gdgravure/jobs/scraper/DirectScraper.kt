@@ -109,7 +109,7 @@ object DirectScraper {
         for (listUrl in txrbzListUrls) {
             runCatching {
                 val doc = Jsoup.connect(listUrl).userAgent(UA).timeout(10000).get()
-                val links = doc.select("a[href*=/info/]").filter {
+                val links = doc.select("a[href*=/info/]").toList().filter {
                     val href = it.absUrl("href")
                     href.endsWith(".html") && it.text().trim().length >= 4 && seen.add(href)
                 }.take(5)
@@ -148,7 +148,7 @@ object DirectScraper {
         for (url in pjobUrls) {
             runCatching {
                 val doc = Jsoup.connect(url).userAgent(UA).timeout(10000).get()
-                val links = doc.select("a[href*=/job], a[href*=/company/]").filter {
+                val links = doc.select("a[href*=/job], a[href*=/company/]").toList().filter {
                     val href = it.absUrl("href")
                     href.endsWith(".html") && it.text().trim().length >= 3 && seen.add(href)
                 }.take(8)
