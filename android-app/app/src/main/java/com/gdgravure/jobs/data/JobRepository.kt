@@ -23,10 +23,11 @@ class JobRepository(context: Context) {
             "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/data/jobs.json"
         private const val PREF_NAME = "gd_gravure_prefs"
         private const val KEY_FEED_URL = "feed_url"
-        private const val KEY_CACHED_JOBS = "cached_jobs_json_v6"
-        private const val KEY_UPDATED_AT = "cached_updated_at_v6"
+        private const val KEY_CACHED_JOBS = "cached_jobs_json_v8"
+        private const val KEY_UPDATED_AT = "cached_updated_at_v8"
         private const val KEY_MANUAL_JOBS = "manual_jobs_json"
         private const val KEY_STATUS_MAP = "status_map_json"
+        private const val KEY_BLACKLIST_PHONES = "blacklist_phones_set"
     }
 
     private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -46,6 +47,14 @@ class JobRepository(context: Context) {
             result[key] = FollowStatus.entries.firstOrNull { it.name == value } ?: FollowStatus.UNREAD
         }
         return result
+    }
+
+    fun getBlacklistedPhones(): Set<String> = prefs.getStringSet(KEY_BLACKLIST_PHONES, emptySet()) ?: emptySet()
+
+    fun blacklistPhone(phone: String) {
+        if (phone.isBlank()) return
+        val next = getBlacklistedPhones().toMutableSet().apply { add(phone) }
+        prefs.edit().putStringSet(KEY_BLACKLIST_PHONES, next).apply()
     }
 
     fun setStatus(jobId: String, status: FollowStatus) {

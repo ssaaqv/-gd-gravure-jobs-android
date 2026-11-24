@@ -14,11 +14,13 @@ import androidx.compose.ui.unit.dp
 import com.gdgravure.jobs.model.FollowStatus
 import com.gdgravure.jobs.model.JobPost
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun JobDetailDialog(
     job: JobPost,
     currentStatus: FollowStatus,
     onStatusChange: (FollowStatus) -> Unit,
+    onBlacklistPhone: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -62,9 +64,9 @@ fun JobDetailDialog(
 
                 HorizontalDivider()
                 Text("标记跟进状态：", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     FollowStatus.entries.forEach { st ->
                         FilterChip(
@@ -74,12 +76,32 @@ fun JobDetailDialog(
                         )
                     }
                 }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        val query = Uri.encode("${job.city} ${job.company}")
+                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=$query"))
+                        runCatching { context.startActivity(mapIntent) }
+                    }) {
+                        Text("地图查厂址")
+                    }
+                    if (job.phone.isNotBlank()) {
+                        TextButton(onClick = {
+                            onBlacklistPhone(job.phone)
+                            onStatusChange(FollowStatus.BLOCKED)
+                            onDismiss()
+                        }) {
+                            Text("拉黑该号码", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (job.phone.isNotBlank()) {
                     Button(onClick = {
+                        onStatusChange(FollowStatus.CONTACTED)
                         val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.phone}"))
                         context.startActivity(intent)
                     }) {

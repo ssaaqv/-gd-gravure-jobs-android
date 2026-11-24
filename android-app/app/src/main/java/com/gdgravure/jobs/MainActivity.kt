@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
                 var aiDigest by remember { mutableStateOf(initialFeed.aiDigest) }
                 var manualJobs by remember { mutableStateOf(repo.getManualJobs()) }
                 var statusMap by remember { mutableStateOf(repo.getStatusMap()) }
+                var blacklistedPhones by remember { mutableStateOf(repo.getBlacklistedPhones()) }
                 var isLoading by remember { mutableStateOf(false) }
                 var errorMsg by remember { mutableStateOf<String?>(null) }
 
@@ -92,7 +93,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                val allJobs = remember(manualJobs, remoteJobs) { manualJobs + remoteJobs }
+                val allJobs = remember(manualJobs, remoteJobs, blacklistedPhones) {
+                    (manualJobs + remoteJobs).filter { it.phone.isBlank() || it.phone !in blacklistedPhones }
+                }
 
                 JobListScreen(
                     jobs = allJobs,
@@ -117,6 +120,10 @@ class MainActivity : ComponentActivity() {
                         onStatusChange = { st ->
                             repo.setStatus(job.id, st)
                             statusMap = repo.getStatusMap()
+                        },
+                        onBlacklistPhone = { phone ->
+                            repo.blacklistPhone(phone)
+                            blacklistedPhones = repo.getBlacklistedPhones()
                         },
                         onDismiss = { selectedJob = null }
                     )

@@ -33,6 +33,8 @@ object LocalTextParser {
         "湖南", "长沙", "四川", "成都", "重庆", "安徽", "桐城", "上海", "北京"
     )
 
+    private val overseasExclude = listOf("越南", "柬埔寨", "缅甸", "泰国", "马来西亚", "印尼", "非洲", "出国", "外派")
+
     private val strongKeywords = listOf(
         "凹版", "凹印", "塑料印刷", "软包装", "彩印", "电子轴", "机械轴",
         "表印", "里印", "塑料袋", "包装袋", "背心袋", "复合袋", "自立袋", "卫包"
@@ -54,6 +56,8 @@ object LocalTextParser {
     ): JobPost? {
         if (seekerExclude.any { title.contains(it) }) return null
         val combined = "$title $body"
+        if (overseasExclude.any { title.contains(it) || body.take(120).contains(it) }) return null
+
         val hasStrong = strongKeywords.any { combined.contains(it, ignoreCase = true) }
         val hasNonGravure = nonGravureOnly.any { combined.contains(it, ignoreCase = true) }
         if (hasNonGravure && !hasStrong) return null
@@ -104,8 +108,10 @@ object LocalTextParser {
         top.forEachIndexed { index, j ->
             val tags = (j.machineTags + j.benefitTags).take(3).joinToString(" / ")
             val extra = if (tags.isNotBlank()) "（$tags）" else ""
+            val salClean = j.salaryText.removeSuffix("元")
+            val salPart = if (j.salaryText != "面议" && !j.title.contains(salClean)) " · ${j.salaryText}" else ""
             val tel = if (j.phone.isNotBlank()) " 电话:${j.phone}" else ""
-            lines.add("${index + 1}. [${j.city}] ${j.title} · ${j.salaryText}$extra$tel")
+            lines.add("${index + 1}. [${j.city}] ${j.title}$salPart$extra$tel")
         }
         val warns = jobs.count { it.repeatCount >= 3 }
         if (warns > 0) {
@@ -222,11 +228,16 @@ object LocalTextParser {
         )
     }
 
-    private fun parseSalary(text: String): Triple<String, Int, Int> {
+    private fun parseSalary(rawText: String): Triple<String, Int, Int> {
+        // 先剔除 11 位手机号、座机号和 6 位以上 QQ/数字串，彻底杜绝把手机号前5位当成工资
+        val text = rawText
+            .replace(Regex("(?<!\\d)1[3-9]\\d{9}(?!\\d)"), " ")
+            .replace(Regex("(?<!\\d)\\d{6,}(?!\\d)"), " ")
+
         Regex("(\\d+(?:\\.\\d+)?)\\s*[-~～至到]\\s*(\\d+(?:\\.\\d+)?)\\s*万").find(text)?.let {
             val lo = (it.groupValues[1].toDouble() * 10000).toInt()
             val hi = (it.groupValues[2].toDouble() * 10000).toInt()
-            return Triple("$lo-${hi}元", lo, hi)
+            if (lo in 3000..60000 && hi >= lo) return Triple("$lo-${hi}元", lo, hi)
         }
         Regex("(\\d+(?:\\.\\d+)?)\\s*[kK千]?\\s*[-~～至到]\\s*(\\d+(?:\\.\\d+)?)\\s*[kK千]").find(text)?.let {
             val loRaw = it.groupValues[1].toDouble()
@@ -235,12 +246,12 @@ object LocalTextParser {
             val hi = if (hiRaw < 100) (hiRaw * 1000).toInt() else hiRaw.toInt()
             if (lo in 2000..60000 && hi >= lo) return Triple("$lo-${hi}元", lo, hi)
         }
-        Regex("(\\d{4,5})\\s*[-~～至到]\\s*(\\d{4,5})").find(text)?.let {
+        Regex("(?<!\\d)(\\d{4,5})\\s*[-~～至到]\\s*(\\d{4,5})(?!\\d)").find(text)?.let {
             val lo = it.groupValues[1].toInt()
             val hi = it.groupValues[2].toInt()
             if (lo in 2500..60000 && hi >= lo) return Triple("$lo-${hi}元", lo, hi)
         }
-        Regex("(?:月薪|工资|待遇|薪资|保底)[^\\d]{0,6}(\\d{4,5})").find(text)?.let {
+        Regex("(?:月薪|工资|待遇|薪资|保底)[^\\d]{0,6}(\\d{4,5})(?!\\d)").find(text)?.let {
             val v = it.groupValues[1].toInt()
             if (v in 2500..60000) return Triple("约${v}元", v, v)
         }
