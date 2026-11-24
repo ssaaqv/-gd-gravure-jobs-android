@@ -1,26 +1,30 @@
 package com.gdgravure.jobs.data
 
 import android.content.Context
-import com.gdgravure.jobs.model.AiDigest
 import com.gdgravure.jobs.model.FeedPayload
 import com.gdgravure.jobs.model.FollowStatus
 import com.gdgravure.jobs.model.JobPost
+import com.gdgravure.jobs.parser.LocalTextParser
+import com.gdgravure.jobs.scraper.DirectScraper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class JobRepository(context: Context) {
 
     companion object {
-        // 替换为你自己 GitHub 仓库的 jobs.json Raw 链接（也可在 App 设置里随时修改）
         const val DEFAULT_FEED_URL =
-            "https://raw.githubusercontent.com/ssaaqv/-gd-gravure-jobs-android/main/data/jobs.json"
+            "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/data/jobs.json"
         private const val PREF_NAME = "gd_gravure_prefs"
         private const val KEY_FEED_URL = "feed_url"
-        private const val KEY_CACHED_REMOTE = "cached_remote_json"
+        private const val KEY_CACHED_JOBS = "cached_jobs_json_v6"
+        private const val KEY_UPDATED_AT = "cached_updated_at_v6"
         private const val KEY_MANUAL_JOBS = "manual_jobs_json"
         private const val KEY_STATUS_MAP = "status_map_json"
     }
@@ -64,51 +68,61 @@ class JobRepository(context: Context) {
         prefs.edit().putString(KEY_MANUAL_JOBS, arr.toString()).apply()
     }
 
-    fun loadCachedRemoteJobs(): FeedPayload {
-        val cached = prefs.getString(KEY_CACHED_REMOTE, null)
-        if (cached.isNullOrBlank()) {
-            return FeedPayload("未同步（点击右上角刷新）", AiDigest(), emptyList())
-        }
-        return parseFeedJson(cached)
+    fun loadCachedFeed(): FeedPayload {
+        val raw = prefs.getString(KEY_CACHED_JOBS, "[]") ?: "[]"
+        val updated = prefs.getString(KEY_UPDATED_AT, "首次启动（点击刷新直抓国内站）") ?: ""
+        val jobs = parseJobsArray(JSONArray(raw), isManual = false)
+        val digest = LocalTextParser.buildLocalDigest(jobs)
+        return FeedPayload(updated, digest, jobs)
     }
 
-    suspend fun fetchRemoteJobs(): Result<FeedPayload> = withContext(Dispatchers.IO) {
+    /**
+     * 中国本地直抓（主力）+ 可选远程 JSON 补充，返回“本次新增的岗位列表”。
+     */
+    suspend fun refreshAllLocalAndRemote(): List<JobPost> = withContext(Dispatchers.IO) {
+        val oldList = loadCachedFeed().jobs
+        val oldIds = oldList.map { it.id }.toSet()
+
+        val merged = linkedMapOf<String, JobPost>()
+        oldList.forEach { merged[it.id] = it }
+
+        // 1. 手机国内网络直连抓取（主力）
+        val directList = runCatching { DirectScraper.scrapeAllDomestic() }.getOrDefault(emptyList())
+        directList.forEach { merged[it.id] = it }
+
+        // 2. 如果配置了云端 jobs.json 也顺便拉取合并
         val urlStr = getFeedUrl()
-        if (urlStr.contains("YOUR_USERNAME")) {
-            return@withContext Result.failure(
-                IllegalStateException("请先点击右上角设置图标，填入你自己的 jobs.json 链接")
-            )
-        }
-        runCatching {
-            val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 10000
-                readTimeout = 12000
-                requestMethod = "GET"
+        if (!urlStr.contains("YOUR_USERNAME") && urlStr.startsWith("http")) {
+            runCatching {
+                val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                }
+                if (conn.responseCode in 200..299) {
+                    val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    val arr = JSONObject(body).optJSONArray("jobs") ?: JSONArray()
+                    parseJobsArray(arr, isManual = false).forEach { merged[it.id] = it }
+                }
             }
-            if (conn.responseCode !in 200..299) {
-                error("HTTP ${conn.responseCode}")
-            }
-            val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            prefs.edit().putString(KEY_CACHED_REMOTE, body).apply()
-            parseFeedJson(body)
         }
-    }
 
-    private fun parseFeedJson(raw: String): FeedPayload {
-        val root = JSONObject(raw)
-        val updatedAt = root.optString("updated_at", "未知时间")
-        val digestObj = root.optJSONObject("ai_digest")
-        val digest = if (digestObj != null) {
-            AiDigest(
-                generatedAt = digestObj.optString("generated_at", ""),
-                mode = digestObj.optString("mode", "AI精选"),
-                summary = digestObj.optString("summary", "")
-            )
-        } else {
-            AiDigest()
-        }
-        val arr = root.optJSONArray("jobs") ?: JSONArray()
-        return FeedPayload(updatedAt, digest, parseJobsArray(arr, isManual = false))
+        val allList = merged.values.toMutableList()
+        val phoneCounts = allList.filter { it.phone.isNotBlank() }.groupingBy { it.phone }.eachCount()
+        val finalList = allList.map { j ->
+            val cnt = if (j.phone.isNotBlank()) (phoneCounts[j.phone] ?: 1) else 1
+            j.copy(repeatCount = cnt)
+        }.sortedByDescending { it.publishedAt }
+
+        val arr = JSONArray()
+        finalList.forEach { arr.put(jobToJson(it)) }
+        val nowStr = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date())
+
+        prefs.edit()
+            .putString(KEY_CACHED_JOBS, arr.toString())
+            .putString(KEY_UPDATED_AT, "$nowStr（本地直抓）")
+            .apply()
+
+        finalList.filter { it.id !in oldIds }
     }
 
     private fun parseJobsArray(arr: JSONArray, isManual: Boolean): List<JobPost> {
@@ -135,7 +149,7 @@ class JobRepository(context: Context) {
                     wechat = o.optString("wechat", ""),
                     contactName = o.optString("contact_name", ""),
                     rawText = o.optString("raw_text", ""),
-                    sourceName = o.optString("source_name", if (isManual) "手动导入" else "垂直源"),
+                    sourceName = o.optString("source_name", if (isManual) "手动导入" else "国内直抓"),
                     sourceUrl = o.optString("source_url", ""),
                     publishedAt = o.optString("published_at", ""),
                     repeatCount = o.optInt("repeat_count", 1),
