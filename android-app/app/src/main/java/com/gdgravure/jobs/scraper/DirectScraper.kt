@@ -10,22 +10,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 
+data class ScrapeResult(
+    val posts: List<JobPost>,
+    val sourceStats: Map<String, Int>
+)
+
 /**
- * 中国本地 8 路并发直抓引擎（重点强化：佛山 / 广州 / 东莞 + 最新日期提取）：
- * 1. 包装前沿网 (pack168.com - 凹版印刷/复合招聘专栏)
- * 2. 91软包装人才网 (91rbz.com - 广东及东莞最新排序 sdate-1)
- * 3. 天下软包装 (txrbz.com - 优先佛山/广州/东莞等广东产区)
- * 4. 中国印刷人才网 (m.pjob.net)
- * 5. 51job普工印刷频道 (mpugong.51job.com - 佛山/广州/东莞)
- * 6. 联展资讯网 (lzzxcn.com)
- * 7. 潮州人才网 (m.czzp.cn)
- * 8. 潮南人才网 (cnqrc.com)
+ * 中国本地高效并发直抓引擎 v11（多页最新时间流 + 礼貌限速）：
+ * 覆盖：包装前沿网(1-5页)、91软包装人才网(多页最新排序)、天下软包装(首页+广东10产区)、
+ * 中国印刷人才网(4组热词)、51job普工印刷(6城)、联展资讯网、潮州人才网、潮南人才网。
  */
 object DirectScraper {
 
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126.0.0.0 Mobile Safari/537.36"
 
     private val txrbzListUrls = listOf(
+        "http://www.txrbz.com/",
         "http://www.txrbz.com/Search.asp?KeyWord=%B7%F0%C9%BD",  // 佛山
         "http://www.txrbz.com/Search.asp?KeyWord=%CB%B3%B5%C2",  // 顺德
         "http://www.txrbz.com/Search.asp?KeyWord=%B9%E3%D6%DD",  // 广州
@@ -41,52 +41,66 @@ object DirectScraper {
     private val rbz91Urls = listOf(
         "https://www.91rbz.com/job/list/1068_1325_1477-20_342-2000_-1_66_75_0_276_3_223_0-1-0-sdate-1.html?wap.readzone.pl",
         "https://www.91rbz.com/job/list/1066-20-8000_-1_67_76_0_0_1_234_0-0-3-0-1.html?wap.readcity.pl",
-        "https://www.91rbz.com/job/list/1066-20-0_-1_0_0_0_0_1_0_0-0-0-0-1.html"
+        "https://www.91rbz.com/job/list/1066-20-0_-1_0_0_0_0_1_0_0-0-0-0-1.html",
+        "https://www.91rbz.com/job/list/1066-20-0_-1_0_0_0_0_1_0_0-0-0-0-2.html",
+        "https://www.91rbz.com/job/list/0-20-0_-1_0_0_0_0_1_0_0-0-0-0-1.html"
     )
 
     private val pjobUrls = listOf(
         "https://m.pjob.net/",
         "https://m.pjob.net/jobs/?keyword=%E5%87%B9%E5%8D%B0",
-        "https://m.pjob.net/jobs/?keyword=%E8%BD%AF%E5%8C%85%E8%A3%85"
+        "https://m.pjob.net/jobs/?keyword=%E5%87%B9%E7%89%88%E5%8D%B0%E5%88%B7",
+        "https://m.pjob.net/jobs/?keyword=%E8%BD%AF%E5%8C%85%E8%A3%85",
+        "https://m.pjob.net/jobs/?keyword=%E5%BD%A9%E5%8D%B0"
     )
 
     private val pugong51Urls = listOf(
         "https://mpugong.51job.com/foshan/yinshuagong/",
         "https://mpugong.51job.com/guangzhou/yinshuagong/",
         "https://mpugong.51job.com/dongguan/yinshuagong/",
-        "https://mpugong.51job.com/chaozhou/yinshuagong/"
+        "https://mpugong.51job.com/shenzhen/yinshuagong/",
+        "https://mpugong.51job.com/chaozhou/yinshuagong/",
+        "https://mpugong.51job.com/shantou/yinshuagong/"
     )
 
-    suspend fun scrapeAllDomestic(): List<JobPost> = withContext(Dispatchers.IO) {
+    suspend fun scrapeAllDomestic(): ScrapeResult = withContext(Dispatchers.IO) {
         coroutineScope {
-            val tasks = listOf(
-                async { scrapePack168() },
-                async { scrape91Rbz() },
-                async { scrapeTxrbz() },
-                async { scrapePjob() },
-                async { scrape51Pugong() },
-                async { scrapeLzzxcn() },
-                async { scrapeCzzp() },
-                async { scrapeCnqrc() }
+            val namedTasks = listOf(
+                "包装前沿" to async { scrapePack168() },
+                "91软包" to async { scrape91Rbz() },
+                "天下软包" to async { scrapeTxrbz() },
+                "印刷人才" to async { scrapePjob() },
+                "51普工" to async { scrape51Pugong() },
+                "联展" to async { scrapeLzzxcn() },
+                "潮州" to async { scrapeCzzp() },
+                "潮南" to async { scrapeCnqrc() }
             )
-            tasks.awaitAll().flatten().distinctBy { it.id }
+            val stats = linkedMapOf<String, Int>()
+            val all = mutableListOf<JobPost>()
+            for ((name, deferred) in namedTasks) {
+                val list = runCatching { deferred.await() }.getOrDefault(emptyList())
+                stats[name] = list.size
+                all.addAll(list)
+            }
+            ScrapeResult(all.distinctBy { it.id }, stats)
         }
     }
 
-    private fun scrapePack168(): List<JobPost> {
+    private suspend fun scrapePack168(): List<JobPost> {
         val out = mutableListOf<JobPost>()
-        val urls = listOf(
-            "https://pack168.com/othermsg/cate/3.html",
-            "https://pack168.com/othermsg/cate/3.html?p=2"
-        )
-        for (url in urls) {
+        val seen = mutableSetOf<String>()
+        for (page in 1..5) {
+            val url = if (page == 1) "https://pack168.com/othermsg/cate/3.html"
+            else "https://pack168.com/othermsg/cate/3.html?p=$page"
             runCatching {
                 val doc = Jsoup.connect(url).userAgent(UA).timeout(12000).get()
                 doc.select("li, div, tr").forEach { el ->
                     val txt = el.text().trim()
-                    if (txt.length in 20..420 && listOf("凹版", "凹印", "彩印", "软包装", "机长", "副手").any { txt.contains(it) }) {
+                    if (txt.length in 20..420 && listOf("凹版", "凹印", "彩印", "软包装", "机长", "副手", "复合").any { txt.contains(it) }) {
                         val a = el.selectFirst("a[href]")
                         val link = a?.absUrl("href")?.ifBlank { url } ?: url
+                        val key = "${link}|${txt.take(28)}"
+                        if (!seen.add(key)) return@forEach
                         val title = a?.text()?.trim()?.takeIf { it.length >= 4 } ?: txt.take(36)
                         LocalTextParser.parseScrapedPost(
                             title = title,
@@ -99,11 +113,12 @@ object DirectScraper {
                     }
                 }
             }
+            delay(200)
         }
         return out
     }
 
-    private fun scrape91Rbz(): List<JobPost> {
+    private suspend fun scrape91Rbz(): List<JobPost> {
         val out = mutableListOf<JobPost>()
         val seen = mutableSetOf<String>()
         for (url in rbz91Urls) {
@@ -113,7 +128,7 @@ object DirectScraper {
                     val href = a.absUrl("href")
                     val title = a.text().trim()
                     if (href.contains("/job/") && !href.contains("/list/") && title.length >= 3 && seen.add(href)) {
-                        if (out.size >= 30) return@forEach
+                        if (out.size >= 60) return@forEach
                         val parentTxt = a.parent()?.parent()?.text()?.trim().orEmpty().ifBlank { title }
                         LocalTextParser.parseScrapedPost(
                             title = title,
@@ -126,6 +141,7 @@ object DirectScraper {
                     }
                 }
             }
+            delay(200)
         }
         return out
     }
@@ -136,13 +152,14 @@ object DirectScraper {
         for (listUrl in txrbzListUrls) {
             runCatching {
                 val doc = Jsoup.connect(listUrl).userAgent(UA).timeout(10000).get()
+                val limit = if (listUrl == "http://www.txrbz.com/") 18 else 10
                 val links = doc.select("a[href*=/info/]").toList().filter {
                     val href = it.absUrl("href")
                     href.endsWith(".html") && it.text().trim().length >= 4 && seen.add(href)
-                }.take(6)
+                }.take(limit)
 
                 for (a in links) {
-                    delay(280)
+                    delay(220)
                     val detailUrl = a.absUrl("href")
                     val title = a.text().trim()
                     runCatching {
@@ -181,10 +198,10 @@ object DirectScraper {
                 val links = doc.select("a[href*=/job], a[href*=/company/]").toList().filter {
                     val href = it.absUrl("href")
                     href.endsWith(".html") && it.text().trim().length >= 3 && seen.add(href)
-                }.take(8)
+                }.take(12)
 
                 for (a in links) {
-                    delay(280)
+                    delay(220)
                     val detailUrl = a.absUrl("href")
                     val title = a.text().trim()
                     runCatching {

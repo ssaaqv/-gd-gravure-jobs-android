@@ -6,6 +6,7 @@ import com.gdgravure.jobs.model.FollowStatus
 import com.gdgravure.jobs.model.JobPost
 import com.gdgravure.jobs.parser.LocalTextParser
 import com.gdgravure.jobs.scraper.DirectScraper
+import com.gdgravure.jobs.scraper.WebViewScraper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -16,21 +17,21 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class JobRepository(context: Context) {
+class JobRepository(private val appContext: Context) {
 
     companion object {
         const val DEFAULT_FEED_URL =
             "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/data/jobs.json"
         private const val PREF_NAME = "gd_gravure_prefs"
         private const val KEY_FEED_URL = "feed_url"
-        private const val KEY_CACHED_JOBS = "cached_jobs_json_v10"
-        private const val KEY_UPDATED_AT = "cached_updated_at_v10"
+        private const val KEY_CACHED_JOBS = "cached_jobs_json_v11"
+        private const val KEY_UPDATED_AT = "cached_updated_at_v11"
         private const val KEY_MANUAL_JOBS = "manual_jobs_json"
         private const val KEY_STATUS_MAP = "status_map_json"
         private const val KEY_BLACKLIST_PHONES = "blacklist_phones_set"
     }
 
-    private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private val prefs = appContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
     fun getFeedUrl(): String = prefs.getString(KEY_FEED_URL, DEFAULT_FEED_URL) ?: DEFAULT_FEED_URL
 
@@ -95,9 +96,18 @@ class JobRepository(context: Context) {
         val merged = linkedMapOf<String, JobPost>()
         oldList.forEach { merged[it.id] = it }
 
-        // 1. 手机国内网络直连抓取（主力）
-        val directList = runCatching { DirectScraper.scrapeAllDomestic() }.getOrDefault(emptyList())
-        directList.forEach { merged[it.id] = it }
+        // 1. 手机国内网络 8 路并发直连抓取 + WebView 动态站渲染抓取
+        val directRes = runCatching { DirectScraper.scrapeAllDomestic() }.getOrNull()
+        directRes?.posts?.forEach { merged[it.id] = it }
+
+        val webRes = runCatching { WebViewScraper.scrapeDynamicSites(appContext) }.getOrNull()
+        webRes?.first?.forEach { merged[it.id] = it }
+
+        val combinedStats = linkedMapOf<String, Int>()
+        directRes?.sourceStats?.let { combinedStats.putAll(it) }
+        webRes?.second?.let { combinedStats.putAll(it) }
+        val statSummary = combinedStats.entries.filter { it.value > 0 }
+            .joinToString("/") { "${it.key}${it.value}" }
 
         // 2. 如果配置了云端 jobs.json 也顺便拉取合并
         val urlStr = getFeedUrl()
@@ -115,7 +125,8 @@ class JobRepository(context: Context) {
             }
         }
 
-        val allList = merged.values.toMutableList()
+        val cutoff45 = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(System.currentTimeMillis() - 45L * 86400_000L))
+        val allList = merged.values.filter { it.publishedAt.length < 10 || it.publishedAt >= cutoff45 }.toMutableList()
         val phoneCounts = allList.filter { it.phone.isNotBlank() }.groupingBy { it.phone }.eachCount()
         val finalList = allList.map { j ->
             val cnt = if (j.phone.isNotBlank()) (phoneCounts[j.phone] ?: 1) else 1
@@ -128,7 +139,7 @@ class JobRepository(context: Context) {
 
         prefs.edit()
             .putString(KEY_CACHED_JOBS, arr.toString())
-            .putString(KEY_UPDATED_AT, "$nowStr（本地直抓）")
+            .putString(KEY_UPDATED_AT, if (statSummary.isNotBlank()) "$nowStr（$statSummary）" else "$nowStr（本地直抓）")
             .apply()
 
         finalList.filter { it.id !in oldIds }
