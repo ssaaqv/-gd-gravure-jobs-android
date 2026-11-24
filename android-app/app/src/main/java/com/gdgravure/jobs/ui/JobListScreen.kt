@@ -58,6 +58,7 @@ fun JobListScreen(
     var showCityMenu by remember { mutableStateOf(false) }
     var showRoleMenu by remember { mutableStateOf(false) }
     var showExtraMenu by remember { mutableStateOf(false) }
+    var showDateMenu by remember { mutableStateOf(false) }
 
     val filteredJobs = remember(jobs, keyword, selectedCity, selectedRole, selectedShift, minSalary, maxDaysAgo, sortBySalary, statusMap) {
         val list = jobs.filter { job ->
@@ -198,7 +199,7 @@ fun JobListScreen(
                                         Text(
                                             "搜机型(电子轴/北人)、膜材、镇区...",
                                             color = TextSecondary,
-                                            fontSize = 13.sp,
+                                            fontSize = 12.sp,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -310,13 +311,7 @@ fun JobListScreen(
                                             onClick = { selectedShift = sh; showExtraMenu = false }
                                         )
                                     }
-                                    HorizontalDivider()
-                                    DATE_FILTERS.forEach { (days, lbl) ->
-                                        DropdownMenuItem(
-                                            text = { Text("发布时间：$lbl", color = if (days == maxDaysAgo) BrandBlue else TextPrimary) },
-                                            onClick = { maxDaysAgo = days; showExtraMenu = false }
-                                        )
-                                    }
+
                                     HorizontalDivider()
                                     MIN_SALARY_FILTERS.forEach { (sal, lbl) ->
                                         DropdownMenuItem(
@@ -327,7 +322,25 @@ fun JobListScreen(
                                 }
                             }
 
-                            // 4. 排序切换
+                            // 4. 独立日期筛选按钮（直接可见）
+                            Box {
+                                val dateLabel = DATE_FILTERS.firstOrNull { it.first == maxDaysAgo }?.second ?: "全部日期"
+                                FilterDropdownButton(
+                                    label = dateLabel,
+                                    active = maxDaysAgo > 0,
+                                    onClick = { showDateMenu = true }
+                                )
+                                DropdownMenu(expanded = showDateMenu, onDismissRequest = { showDateMenu = false }) {
+                                    DATE_FILTERS.forEach { (days, lbl) ->
+                                        DropdownMenuItem(
+                                            text = { Text(lbl, fontWeight = if (days == maxDaysAgo) FontWeight.Bold else FontWeight.Normal) },
+                                            onClick = { maxDaysAgo = days; showDateMenu = false }
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 5. 排序切换
                             TextButton(
                                 onClick = { sortBySalary = !sortBySalary },
                                 contentPadding = PaddingValues(horizontal = 6.dp)
@@ -377,7 +390,7 @@ fun JobListScreen(
                                                 Text(if (expanded) "收起" else "展开", fontSize = 12.sp, color = TextSecondary)
                                             }
                                             if (expanded) {
-                                                Text(aiDigest.summary, fontSize = 13.sp, color = TextPrimary, lineHeight = 19.sp)
+                                                Text(aiDigest.summary, fontSize = 12.sp, color = TextPrimary, lineHeight = 19.sp)
                                             }
                                         }
                                     }
@@ -428,10 +441,10 @@ fun JobListScreen(
 
 @Composable
 private fun FilterDropdownButton(label: String, active: Boolean, onClick: () -> Unit) {
-    TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)) {
+    TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)) {
         Text(
             text = label,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
             color = if (active) BrandBlue else TextPrimary,
             maxLines = 1,
@@ -537,7 +550,7 @@ private fun PolishedJobCard(job: JobPost, status: FollowStatus, onClick: () -> U
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = job.company,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = TextPrimary,
                         maxLines = 1,
@@ -591,7 +604,7 @@ private fun EmptyStateView(title: String, subtitle: String) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Default.Inbox, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(44.dp))
             Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-            Text(subtitle, fontSize = 13.sp, color = TextSecondary)
+            Text(subtitle, fontSize = 12.sp, color = TextSecondary)
         }
     }
 }

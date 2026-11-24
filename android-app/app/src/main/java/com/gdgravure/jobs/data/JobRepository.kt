@@ -23,8 +23,8 @@ class JobRepository(context: Context) {
             "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/data/jobs.json"
         private const val PREF_NAME = "gd_gravure_prefs"
         private const val KEY_FEED_URL = "feed_url"
-        private const val KEY_CACHED_JOBS = "cached_jobs_json_v8"
-        private const val KEY_UPDATED_AT = "cached_updated_at_v8"
+        private const val KEY_CACHED_JOBS = "cached_jobs_json_v10"
+        private const val KEY_UPDATED_AT = "cached_updated_at_v10"
         private const val KEY_MANUAL_JOBS = "manual_jobs_json"
         private const val KEY_STATUS_MAP = "status_map_json"
         private const val KEY_BLACKLIST_PHONES = "blacklist_phones_set"
@@ -160,7 +160,7 @@ class JobRepository(context: Context) {
                     rawText = o.optString("raw_text", ""),
                     sourceName = o.optString("source_name", if (isManual) "手动导入" else "国内直抓"),
                     sourceUrl = o.optString("source_url", ""),
-                    publishedAt = o.optString("published_at", ""),
+                    publishedAt = LocalTextParser.normalizeDate(o.optString("published_at", "")),
                     repeatCount = o.optInt("repeat_count", 1),
                     isManualImport = isManual
                 )

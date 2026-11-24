@@ -45,6 +45,7 @@ object LocalTextParser {
         "北人", "欧诺", "华丰", "方邦", "博斯特", "松德", "PE", "OPP", "BOPP", "PET", "CPP", "PVC", "筒膜", "调墨"
     )
     private val seekerExclude = listOf("求职", "本人找工作", "找印刷工作", "求职印刷", "求职凹印")
+    private val officeExclude = listOf("业务跟单", "销售", "业务员", "财务", "会计", "文员", "内勤", "司机", "保安", "仓管")
     private val nonGravureOnly = listOf("丝印", "移印", "UV平板", "数码打印", "海德堡胶印", "瓦楞纸箱")
 
     fun parseScrapedPost(
@@ -56,6 +57,7 @@ object LocalTextParser {
         publishedAt: String
     ): JobPost? {
         if (seekerExclude.any { title.contains(it) }) return null
+        if (officeExclude.any { title.contains(it) } && !listOf("凹印", "凹版", "印刷").any { title.contains(it) }) return null
         val combined = "$title $body"
         if (overseasExclude.any { title.contains(it) || body.take(120).contains(it) }) return null
 
@@ -77,7 +79,7 @@ object LocalTextParser {
             city = city,
             sourceName = sourceName,
             sourceUrl = sourceUrl,
-            publishedAt = publishedAt.ifBlank { extractPublishDate(combined) },
+            publishedAt = normalizeDate(publishedAt.ifBlank { extractPublishDate(combined) }),
             isManual = false
         )
     }
@@ -257,6 +259,11 @@ object LocalTextParser {
             if (v in 2500..60000) return Triple("约${v}元", v, v)
         }
         return Triple("面议", 0, 0)
+    }
+
+    fun normalizeDate(raw: String): String {
+        val m = Regex("(202[4-7])[/-](\\d{1,2})[/-](\\d{1,2})").find(raw) ?: return raw
+        return "${m.groupValues[1]}-${m.groupValues[2].padStart(2, '0')}-${m.groupValues[3].padStart(2, '0')}"
     }
 
     fun extractPublishDate(text: String): String {
